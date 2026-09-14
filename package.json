@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Glint-Org/Glint-MCP.git"
+    "url": "git+https://github.com/GlintShot/Glint-MCP.git"
   },
   "keywords": ["mcp", "app-store", "screenshots", "android", "flutter"],
   "files": ["src/"],

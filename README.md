@@ -26,7 +26,7 @@ The **agent is the intelligence**. Developers should not paste LLM API keys into
   "mcpServers": {
     "glint": {
       "command": "node",
-      "args": ["/ABS/PATH/Glint-Org/Glint-MCP/src/index.js"],
+      "args": ["/ABS/PATH/GlintShot/Glint-MCP/src/index.js"],
       "env": {
         "GLINT_WEB_BASE": "http://127.0.0.1:4173"
       }

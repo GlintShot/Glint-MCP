@@ -146,7 +146,7 @@ server.tool(
             via: 'dart run',
             stdout: alt.stdout,
             stderr: alt.stderr,
-            tip: 'Activate CLI: dart pub global activate --source git https://github.com/Glint-Org/Glint-Capture.git',
+            tip: 'Activate CLI: dart pub global activate --source git https://github.com/GlintShot/Glint-Capture.git',
           }, null, 2),
         }],
         isError: alt.code !== 0,
