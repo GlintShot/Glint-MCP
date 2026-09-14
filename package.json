@@ -2,14 +2,22 @@
   "name": "glint-mcp",
   "version": "0.1.0",
   "type": "module",
-  "description": "MCP server for Glint real-UI capture and headless export (agents).",
+  "description": "MCP server for Glint Capture, Bridge, headless export, and Copilot editor boards.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/GlintShot/Glint-MCP.git"
   },
-  "keywords": ["mcp", "app-store", "screenshots", "android", "flutter"],
-  "files": ["src/"],
+  "keywords": [
+    "mcp",
+    "app-store",
+    "screenshots",
+    "android",
+    "flutter"
+  ],
+  "files": [
+    "src/"
+  ],
   "bin": {
     "glint-mcp": "./src/index.js"
   },
@@ -21,6 +29,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "playwright": "^1.63.0",
     "zod": "^3.24.0"
   }
 }

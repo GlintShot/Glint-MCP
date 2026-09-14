@@ -9,6 +9,7 @@
  *   GLINT_CAPTURE_ROOT - path to Glint-Capture package (for init/capture shell)
  *   GLINT_WEB_ROOT - path to Glint-Web (for headless export)
  *   GLINT_WEB_BASE - running Web preview URL (default http://127.0.0.1:4173)
+ *   GLINT_CDP_URL - Chrome DevTools URL for Copilot boards (default http://127.0.0.1:9222)
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -17,6 +18,14 @@ import { spawn } from 'node:child_process';
 import { access, readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  DEFAULT_CDP,
+  TIP_CDP,
+  TIP_PAIR,
+  connectCdp,
+  listBoardsFromBrowser,
+  withBoard,
+} from './editorBoard.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ORG_ROOT = path.resolve(__dirname, '../..');
@@ -443,6 +452,147 @@ server.tool(
   },
 );
 
+const EDITOR_OPS = [
+  'getEditorState',
+  'selectFrame',
+  'selectDevice',
+  'setDeviceScale',
+  'setDeviceAngle',
+  'setScreenshot',
+  'matchDeviceTransform',
+];
+
+server.tool(
+  'glint_editor_list_boards',
+  'List open Glint Web Copilot boards (Allow agent on). Requires Chrome CDP. Guide the user: open editor → Allow agent → share board code.',
+  {
+    cdpUrl: z.string().optional().describe(`Chrome DevTools URL (default ${DEFAULT_CDP})`),
+  },
+  async ({ cdpUrl }) => {
+    let browser;
+    try {
+      browser = await connectCdp(cdpUrl || DEFAULT_CDP);
+    } catch (err) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            ok: false,
+            error: err.code || 'cdp_unavailable',
+            tip: err.tip || TIP_CDP,
+          }, null, 2),
+        }],
+        isError: true,
+      };
+    }
+    try {
+      const boards = await listBoardsFromBrowser(browser);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            ok: true,
+            boards,
+            tip: boards.length ? TIP_PAIR : `${TIP_PAIR} None found yet.`,
+          }, null, 2),
+        }],
+      };
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  },
+);
+
+server.tool(
+  'glint_editor_state',
+  'Read live editor state for a Copilot board (frames, scale, angle). Pass the user board code. Do not open a new Glint tab.',
+  {
+    pairCode: z.string().describe('4-letter board code from Allow agent'),
+    cdpUrl: z.string().optional(),
+  },
+  async ({ pairCode, cdpUrl }) => {
+    const result = await withBoard(pairCode, async (page, code) => {
+      const state = await page.evaluate(async (c) => {
+        const g = window.__GLINT_COPILOT__;
+        if (!g?.isThisBoard?.(c)) return { ok: false, error: 'wrong_board' };
+        return g.getEditorState();
+      }, code);
+      return { ok: !!state?.ok, pairCode: code, ...state };
+    }, { cdpUrl: cdpUrl || DEFAULT_CDP });
+
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      isError: !result.ok,
+    };
+  },
+);
+
+server.tool(
+  'glint_editor_dispatch',
+  'Run one canvas op on a live Copilot board (shows agent cursor). Ops: selectFrame, selectDevice, setDeviceScale, setDeviceAngle, setScreenshot, matchDeviceTransform, getEditorState.',
+  {
+    pairCode: z.string(),
+    op: z.enum(EDITOR_OPS),
+    args: z.record(z.any()).optional().describe('Op args, e.g. { frameIndex: 0, pct: 90 }'),
+    present: z.boolean().optional().default(true),
+    paceMs: z.number().optional(),
+    cdpUrl: z.string().optional(),
+  },
+  async ({ pairCode, op, args, present, paceMs, cdpUrl }) => {
+    const result = await withBoard(pairCode, async (page, code) => {
+      return page.evaluate(async ({ c, opName, opArgs, presentFlag, pace }) => {
+        const g = window.__GLINT_COPILOT__;
+        if (!g?.isThisBoard?.(c)) return { ok: false, error: 'wrong_board', pairCode: g?.pairCode };
+        return g.dispatch(opName, opArgs || {}, {
+          pairCode: c,
+          present: presentFlag !== false,
+          paceMs: pace,
+        });
+      }, {
+        c: code,
+        opName: op,
+        opArgs: args || {},
+        presentFlag: present,
+        pace: paceMs,
+      });
+    }, { cdpUrl: cdpUrl || DEFAULT_CDP });
+
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      isError: !result.ok,
+    };
+  },
+);
+
+server.tool(
+  'glint_editor_board_pass',
+  'Copilot board pass: walk every frame left→right with the agent cursor, copying scale/angle from the source frame (shared knowledge across screenshots).',
+  {
+    pairCode: z.string(),
+    sourceIndex: z.number().int().optional().describe('Source frame index (default: active or 0)'),
+    paceMs: z.number().optional().default(420),
+    cdpUrl: z.string().optional(),
+  },
+  async ({ pairCode, sourceIndex, paceMs, cdpUrl }) => {
+    const result = await withBoard(pairCode, async (page, code) => {
+      return page.evaluate(async ({ c, src, pace }) => {
+        const g = window.__GLINT_COPILOT__;
+        if (!g?.isThisBoard?.(c)) return { ok: false, error: 'wrong_board', pairCode: g?.pairCode };
+        return g.boardPass({
+          pairCode: c,
+          sourceIndex: src,
+          paceMs: pace,
+        });
+      }, { c: code, src: sourceIndex, pace: paceMs });
+    }, { cdpUrl: cdpUrl || DEFAULT_CDP });
+
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      isError: !result.ok,
+    };
+  },
+);
+
 server.tool(
   'glint_ecosystem_info',
   'Return Glint ecosystem info: paths, tools, and decision guide for screenshot capture.',
@@ -456,6 +606,7 @@ server.tool(
         androidDevice: 'Agentic IDE: glint_bridge_launch → loop glint_bridge_screenshot + glint_bridge_hierarchy + tap/scroll/back, keep 5-8 best → output/ → Glint Web. Headless CI: glint_bridge_crawl (heuristic or --ai with key).',
         specifyScreens: 'Write rules directly in test/glint_screenshots_test.dart, skip discover',
         noScreensSpecified: 'Run glint_discover --write to auto-find best marketing screens',
+        copilot: 'User opens Glint Web → Allow agent → share board code → glint_editor_* tools (Chrome CDP). Never open a second editor tab.',
       },
       goldenPath: path.join(ORG_ROOT, 'Glint-Docs/guides/golden-path.md'),
       smoke: path.join(ORG_ROOT, 'Glint-Docs/guides/smoke-checklist.md'),
@@ -463,8 +614,18 @@ server.tool(
       webRoot: WEB_ROOT,
       bridgeRoot: BRIDGE_ROOT,
       webBase: WEB_BASE,
-      tools: ['glint_init', 'glint_discover', 'glint_capture', 'glint_bridge_crawl', 'glint_bridge_launch', 'glint_bridge_screenshot', 'glint_bridge_hierarchy', 'glint_bridge_tap', 'glint_bridge_scroll', 'glint_bridge_back', 'glint_render', 'glint_validate_session', 'glint_export', 'glint_ecosystem_info'],
-      agentNote: 'Agent is the intelligence: drive Bridge step tools yourself (no API key). glint_render = no-browser PNG compositing (no Playwright). glint_bridge_crawl --ai (user key) is for headless CI only.',
+      cdpUrl: DEFAULT_CDP,
+      tools: [
+        'glint_init', 'glint_discover', 'glint_capture',
+        'glint_bridge_crawl', 'glint_bridge_launch', 'glint_bridge_screenshot',
+        'glint_bridge_hierarchy', 'glint_bridge_tap', 'glint_bridge_scroll', 'glint_bridge_back',
+        'glint_render', 'glint_validate_session', 'glint_export',
+        'glint_editor_list_boards', 'glint_editor_state', 'glint_editor_dispatch', 'glint_editor_board_pass',
+        'glint_ecosystem_info',
+      ],
+      agentNote: 'Agent is the intelligence: drive Bridge step tools yourself (no API key). Mode 2: glint_export / glint_render. Mode 3 Copilot: glint_editor_* via CDP on the user board code.',
+      tipCdp: TIP_CDP,
+      tipPair: TIP_PAIR,
     };
     return { content: [{ type: 'text', text: JSON.stringify(info, null, 2) }] };
   },
