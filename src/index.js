@@ -460,6 +460,13 @@ const EDITOR_OPS = [
   'setDeviceAngle',
   'setScreenshot',
   'matchDeviceTransform',
+  'remapColors',
+  'setBackground',
+  'setDeviceBezel',
+  'setScreenshotStyle',
+  'setText',
+  'addText',
+  'extractTheme',
 ];
 
 server.tool(
@@ -529,7 +536,7 @@ server.tool(
 
 server.tool(
   'glint_editor_dispatch',
-  'Run one canvas op on a live Copilot board (shows agent cursor). Ops: selectFrame, selectDevice, setDeviceScale, setDeviceAngle, setScreenshot, matchDeviceTransform, getEditorState.',
+  'Run one canvas op on a live Copilot board (shows agent cursor). Ops: selectFrame, selectDevice, setDeviceScale, setDeviceAngle, setScreenshot, matchDeviceTransform, remapColors, setBackground, setDeviceBezel, setScreenshotStyle, setText, addText, extractTheme, getEditorState.',
   {
     pairCode: z.string(),
     op: z.enum(EDITOR_OPS),
