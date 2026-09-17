@@ -58,6 +58,17 @@ function run(cmd, args, opts = {}) {
   });
 }
 
+/** Bridge agent steps must use -m (relative imports). No API key. */
+function runBridgeAgent(stepArgs, serial) {
+  const args = [
+    '-m',
+    'bridge.agent',
+    ...(serial ? ['--serial', serial] : []),
+    ...stepArgs,
+  ];
+  return run('python3', args, { cwd: BRIDGE_ROOT });
+}
+
 async function validateSessionDir(sessionDir) {
   const abs = path.resolve(sessionDir);
   const sessionPath = path.join(abs, 'session.json');
@@ -233,7 +244,7 @@ server.tool(
 
 server.tool(
   'glint_bridge_crawl',
-  'Headless auto-crawl (CI or no-agent use). Heuristic scroll/tap needs Appium; --ai needs GLINT_AI_API_KEY. Inside an agentic IDE prefer the glint_bridge_* step tools below - YOU are the planner, no API key needed.',
+  'Headless auto-crawl for CI / no-IDE use only. Needs Appium (Android) or Playwright (web). Optional ai:true needs GLINT_AI_API_KEY already in env - never ask the user for a key. Inside Cursor/Claude prefer glint_bridge_launch + screenshot/hierarchy/tap/scroll/back - YOU are the planner, zero API keys.',
   {
     target: z.string().describe('Android package (com.app) or URL for web crawl'),
     ai: z.boolean().default(false).describe('Server-side AI vision (needs key). Default false: heuristic.'),
@@ -271,12 +282,45 @@ server.tool(
 );
 
 server.tool(
+  'glint_bridge_pass',
+  'TOKEN-CHEAP one-shot: launch package → N true-color screenshots with scrolls between → session.json. Prefer this over looping launch/screenshot/scroll. Eye-comfort filter briefly disabled per shot then restored.',
+  {
+    package: z.string().describe('Android package, e.g. com.darkmintis.breathreset'),
+    count: z.number().int().min(1).max(10).default(5),
+    settle: z.number().default(0.9).describe('Seconds to wait after launch / scroll'),
+    trueColor: z.boolean().default(true),
+    swipe: z.enum(['horizontal', 'vertical']).default('horizontal'),
+    serial: z.string().optional(),
+  },
+  async ({ package: pkg, count, settle, trueColor, swipe, serial }) => {
+    const step = [
+      'pass',
+      pkg,
+      '--count', String(count),
+      '--settle', String(settle),
+      '--swipe', swipe,
+      ...(trueColor ? [] : ['--no-true-color']),
+    ];
+    const result = await runBridgeAgent(step, serial);
+    return {
+      content: [{ type: 'text', text: result.stdout || result.stderr }],
+      isError: result.code !== 0,
+    };
+  },
+);
+
+server.tool(
   'glint_bridge_screenshot',
-  'Agent crawl step: capture one raw screenshot via ADB (no Appium, no API key). YOU decide keep/reject - keep 5-8 store-worthy screens.',
-  { serial: z.string().optional().describe('ADB serial (omit for single device)') },
-  async ({ serial }) => {
-    const args = [path.join(BRIDGE_ROOT, 'bridge/agent.py'), ...(serial ? ['--serial', serial] : []), 'screenshot'];
-    const result = await run('python3', args, { cwd: BRIDGE_ROOT });
+  'Agent crawl step: one true-color ADB screenshot (eye comfort briefly off). Prefer glint_bridge_pass for multi-shot packs.',
+  {
+    serial: z.string().optional().describe('ADB serial (omit for single device)'),
+    trueColor: z.boolean().default(true),
+  },
+  async ({ serial, trueColor }) => {
+    const result = await runBridgeAgent(
+      ['screenshot', ...(trueColor ? [] : ['--no-true-color'])],
+      serial,
+    );
     return { content: [{ type: 'text', text: result.stdout || result.stderr }], isError: result.code !== 0 };
   },
 );
@@ -289,8 +333,10 @@ server.tool(
     package: z.string().default('').describe('App package to scope the dump'),
   },
   async ({ serial, package: pkg }) => {
-    const args = [path.join(BRIDGE_ROOT, 'bridge/agent.py'), ...(serial ? ['--serial', serial] : []), 'hierarchy', ...(pkg ? ['--package', pkg] : [])];
-    const result = await run('python3', args, { cwd: BRIDGE_ROOT });
+    const result = await runBridgeAgent(
+      ['hierarchy', ...(pkg ? ['--package', pkg] : [])],
+      serial,
+    );
     return { content: [{ type: 'text', text: result.stdout || result.stderr }], isError: result.code !== 0 };
   },
 );
@@ -304,8 +350,7 @@ server.tool(
     serial: z.string().optional(),
   },
   async ({ x, y, serial }) => {
-    const args = [path.join(BRIDGE_ROOT, 'bridge/agent.py'), ...(serial ? ['--serial', serial] : []), 'tap', String(x), String(y)];
-    const result = await run('python3', args, { cwd: BRIDGE_ROOT });
+    const result = await runBridgeAgent(['tap', String(x), String(y)], serial);
     return { content: [{ type: 'text', text: result.stdout || result.stderr }], isError: result.code !== 0 };
   },
 );
@@ -318,8 +363,7 @@ server.tool(
     serial: z.string().optional(),
   },
   async ({ direction, serial }) => {
-    const args = [path.join(BRIDGE_ROOT, 'bridge/agent.py'), ...(serial ? ['--serial', serial] : []), 'scroll', direction];
-    const result = await run('python3', args, { cwd: BRIDGE_ROOT });
+    const result = await runBridgeAgent(['scroll', direction], serial);
     return { content: [{ type: 'text', text: result.stdout || result.stderr }], isError: result.code !== 0 };
   },
 );
@@ -329,8 +373,7 @@ server.tool(
   'Agent crawl step: system back button via ADB.',
   { serial: z.string().optional() },
   async ({ serial }) => {
-    const args = [path.join(BRIDGE_ROOT, 'bridge/agent.py'), ...(serial ? ['--serial', serial] : []), 'back'];
-    const result = await run('python3', args, { cwd: BRIDGE_ROOT });
+    const result = await runBridgeAgent(['back'], serial);
     return { content: [{ type: 'text', text: result.stdout || result.stderr }], isError: result.code !== 0 };
   },
 );
@@ -343,8 +386,7 @@ server.tool(
     serial: z.string().optional(),
   },
   async ({ package: pkg, serial }) => {
-    const args = [path.join(BRIDGE_ROOT, 'bridge/agent.py'), ...(serial ? ['--serial', serial] : []), 'launch', pkg];
-    const result = await run('python3', args, { cwd: BRIDGE_ROOT });
+    const result = await runBridgeAgent(['launch', pkg], serial);
     return { content: [{ type: 'text', text: result.stdout || result.stderr }], isError: result.code !== 0 };
   },
 );
@@ -610,7 +652,7 @@ server.tool(
       loop: 'Capture/Bridge → session.json → Web → ZIP → View',
       decisionGuide: {
         flutterApp: 'Use glint_discover (auto) or write rules manually → glint_capture → output/ → Glint Web',
-        androidDevice: 'Agentic IDE: glint_bridge_launch → loop glint_bridge_screenshot + glint_bridge_hierarchy + tap/scroll/back, keep 5-8 best → output/ → Glint Web. Headless CI: glint_bridge_crawl (heuristic or --ai with key).',
+        androidDevice: 'Prefer glint_bridge_pass(package, count:5) one-shot (true-color, session.json). Or step tools: launch → screenshot/hierarchy/tap/scroll. Headless CI: glint_bridge_crawl.',
         specifyScreens: 'Write rules directly in test/glint_screenshots_test.dart, skip discover',
         noScreensSpecified: 'Run glint_discover --write to auto-find best marketing screens',
         copilot: 'User opens Glint Web → Allow agent → share board code → glint_editor_* tools (Chrome CDP). Never open a second editor tab.',
@@ -624,7 +666,7 @@ server.tool(
       cdpUrl: DEFAULT_CDP,
       tools: [
         'glint_init', 'glint_discover', 'glint_capture',
-        'glint_bridge_crawl', 'glint_bridge_launch', 'glint_bridge_screenshot',
+        'glint_bridge_crawl', 'glint_bridge_pass', 'glint_bridge_launch', 'glint_bridge_screenshot',
         'glint_bridge_hierarchy', 'glint_bridge_tap', 'glint_bridge_scroll', 'glint_bridge_back',
         'glint_render', 'glint_validate_session', 'glint_export',
         'glint_editor_list_boards', 'glint_editor_state', 'glint_editor_dispatch', 'glint_editor_board_pass',
