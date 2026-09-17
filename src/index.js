@@ -508,6 +508,9 @@ const EDITOR_OPS = [
   'setScreenshotStyle',
   'setText',
   'addText',
+  'addGraphic',
+  'addShape',
+  'clearDecorations',
   'extractTheme',
   'startBlank',
 ];
