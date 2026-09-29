@@ -586,7 +586,7 @@ server.tool(
 
 server.tool(
   'glint_editor_dispatch',
-  'Run one canvas op on a live Copilot board (shows agent cursor). Ops: selectFrame, selectDevice, setDeviceScale, setDeviceAngle, setDeviceMode, setDeviceOrbit, setScreenshot, matchDeviceTransform, remapColors, setBackground, setDeviceBezel, setScreenshotStyle, setText, addText, setLocale, setLocaleText, addGraphic, addShape, clearDecorations, extractTheme, startBlank, getEditorState. Translate captions: getEditorState (frames[].texts[] has textIndex/text/i18n) → translate each → setLocaleText { items: [{ locale, frameIndex, textIndex, text }] } → setLocale { locale } to preview. Locales: en-US, es-ES, fr-FR, de-DE, ja-JP, ko-KR, zh-Hans, pt-BR, ar, hi-IN.',
+  'Run one canvas op on a live Copilot board (shows agent cursor). Ops: selectFrame, selectDevice, setDeviceScale, setDeviceAngle, setDeviceMode, setDeviceOrbit, setScreenshot, matchDeviceTransform, remapColors, setBackground, setDeviceBezel, setScreenshotStyle, setText, addText, setLocale, setLocaleText, addGraphic, addShape, clearDecorations, extractTheme, startBlank, getEditorState. Translate captions: getEditorState (frames[].texts[] has textIndex/text/i18n) → translate each → setLocaleText { items: [{ locale, frameIndex, textIndex, text }] } → setLocale { locale } to preview. Target languages: state.locales (project) — any id from state.availableLocales works.',
   {
     pairCode: z.string(),
     op: z.enum(EDITOR_OPS),
